@@ -1,0 +1,138 @@
+Parameters:
+  RoleTempName:
+    Description: Name of the s3 role iam instance profile from cicds3role.yml
+    Type: String
+    Default: cicds3role #name of the s3 role template so that this template will fetch the output of the s3 role template
+  JenkinsStackName:
+    Type: String
+    Description: Will take the output of Jenkins security group id from jenkins.yml template
+    Default: Jenkins
+  InstanceProfileName:
+    Description: Full name of the IAM instance profile to import
+    Type: String
+    Default: cicds3role-cloudS3RoleProfileName
+  MyIP:
+    Type: String
+  KeyName:
+    Type: String
+  InstanceType:
+    Type: String
+    Default: t3.small
+Mappings:
+  AmiRegionMap:
+    eu-west-2:
+      AMI: ami-03ceeb33c1e4abcd1
+    us-west-1:
+      AMI: ami-059d737350291b1aa
+    eu-west-1:
+      AMI: ami-0c3a915e3f3aa0e0d
+    us-west-2:
+      AMI: ami-033067239f2d2bfbc
+Resources:
+  NexusIntance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      ImageId: !FindInMap
+        - AmiRegionMap
+        - !Ref AWS::Region #will fetch the region
+        - AMI #KEY NAME INSIDE Mappings[AmiRegionMap][EU-WEST-2][AMI]
+      Tags:
+        - Key: "Name"
+          Value: !Join
+            - "-"
+            - - "Tomcat in "
+              - !Ref AWS::Region
+      SecurityGroupIds:
+        - !Ref cloudformsgapp
+      IamInstanceProfile:
+        Fn::ImportValue: !Sub "${InstanceProfileName}"
+      UserData:
+        Fn::Base64:
+          !Sub |
+              #! /bin/bash
+              sudo apt update
+              sudo apt install git wget unzip -y
+              sudo apt install openjdk-8-jdk -y
+              sudo apt install awscli -y
+              TOMURL="https://archive.apache.org/dist/tomcat/tomcat-9/v9.0.75/bin/apache-tomcat-9.0.75.tar.gz"
+              cd /tmp/
+              wget $TOMURL -O tomcatbin.tar.gz
+              EXTOUT=`tar xzvf tomcatbin.tar.gz`
+              TOMDIR=`echo $EXTOUT | cut -d '/' -f1`
+              useradd --shell /sbin/nologin tomcat
+              rsync -avzh /tmp/$TOMDIR/ /usr/local/tomcat/
+              chown -R tomcat.tomcat /usr/local/tomcat
+              rm -rf /etc/systemd/system/tomcat.service
+              cat <<EOT>> /etc/systemd/system/tomcat.service
+              [Unit]
+              Description=Tomcat
+              After=network.target
+              
+              [Service]
+              
+              User=tomcat
+              Group=tomcat
+              
+              WorkingDirectory=/usr/local/tomcat
+              
+              #Environment=JRE_HOME=/usr/lib/jvm/jre
+              Environment=JAVA_HOME=/usr/lib/jvm/jre
+              
+              Environment=CATALINA_PID=/var/tomcat/%i/run/tomcat.pid
+              Environment=CATALINA_HOME=/usr/local/tomcat
+              Environment=CATALINE_BASE=/usr/local/tomcat
+              
+              ExecStart=/usr/local/tomcat/bin/catalina.sh run
+              ExecStop=/usr/local/tomcat/bin/shutdown.sh
+              
+              
+              RestartSec=10
+              Restart=always
+              
+              [Install]
+              WantedBy=multi-user.target
+              
+              EOT
+              
+              systemctl daemon-reload
+              systemctl start tomcat
+              systemctl enable tomcat
+
+  cloudformsgapp:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: cloudformsgapp
+      GroupDescription: Allow SSH & HTTP from myip
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: !Ref MyIP
+
+        - IpProtocol: tcp
+          FromPort: '8080'
+          ToPort: '8080'
+          CidrIp: 0.0.0.0/0
+  appSGIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId:
+        Fn::GetAtt:
+          - cloudformsgapp
+          - GroupId
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      SourceSecurityGroupId:
+        Fn::ImportValue: !Sub "${JenkinsStackName}-SGID"
+Outputs:
+  appSecurityGroupId:
+    Description: Security Group 1 ID
+    Value:
+      Fn::GetAtt:
+        - cloudformsgapp
+        - GroupId
+    Export:
+      Name: app01qa-SGID

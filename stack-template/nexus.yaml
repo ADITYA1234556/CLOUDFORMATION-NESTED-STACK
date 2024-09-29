@@ -1,0 +1,124 @@
+Parameters:
+  RoleTempName:
+    Description: Name of the s3 role iam instance profile from cicds3role.yml
+    Type: String
+    Default: cicds3role #name of the s3 role template so that this template will fetch the output of the s3 role template
+  JenkinsStackName:
+    Type: String
+    Description: Will take the output of Jenkins security group id from jenkins.yml template
+    Default: Jenkins
+  MyIP:
+    Type: String
+  KeyName:
+    Type: String
+  InstanceType:
+    Type: String
+    Default: t3.small
+Mappings:
+  AmiRegionMap:
+    eu-west-2:
+      AMI: ami-0aa938b5c246ef111
+    us-west-1:
+      AMI: ami-059d737350291b1aa
+    eu-west-1:
+      AMI: ami-0c3a915e3f3aa0e0d
+    us-west-2:
+      AMI: ami-033067239f2d2bfbc
+Resources:
+  NexusInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      ImageId: !FindInMap
+        - AmiRegionMap
+        - !Ref AWS::Region #will fetch the region
+        - AMI #KEY NAME INSIDE Mappings[AmiRegionMap][EU-WEST-2][AMI]
+      Tags:
+        - Key: "Name"
+          Value: !Join
+            - "-"
+            - - "Nexus in "
+              - !Ref AWS::Region
+      SecurityGroupIds:
+        - !Ref cloudformsgnexus
+      IamInstanceProfile:
+        Fn::ImportValue: !Sub "${RoleTempName}-cloudS3RoleProfileName"
+      UserData:
+        Fn::Base64:
+          !Sub |
+              #!/bin/bash
+              yum install java-11-openjdk-devel wget -y   
+              yum install epel-release -y
+              yum install awscli -y
+              mkdir -p /opt/nexus/   
+              mkdir -p /tmp/nexus/                           
+              cd /tmp/nexus/
+              NEXUSURL="https://download.sonatype.com/nexus/3/latest-unix.tar.gz"
+              wget $NEXUSURL -O nexus.tar.gz
+              sleep 10
+              EXTOUT=`tar xzvf nexus.tar.gz`
+              NEXUSDIR=`echo $EXTOUT | cut -d '/' -f1`
+              sleep 5
+              rm -rf /tmp/nexus/nexus.tar.gz
+              cp -r /tmp/nexus/* /opt/nexus/
+              sleep 5
+              useradd nexus
+              chown -R nexus.nexus /opt/nexus 
+              cat <<EOT>> /etc/systemd/system/nexus.service
+              [Unit]                                                                          
+              Description=nexus service                                                       
+              After=network.target                                                            
+                                                                                
+              [Service]                                                                       
+              Type=forking                                                                    
+              LimitNOFILE=65536                                                               
+              ExecStart=/opt/nexus/$NEXUSDIR/bin/nexus start                                  
+              ExecStop=/opt/nexus/$NEXUSDIR/bin/nexus stop                                    
+              User=nexus                                                                      
+              Restart=on-abort                                                                
+                                                                                
+              [Install]                                                                       
+              WantedBy=multi-user.target                                                      
+              
+              EOT
+              
+              echo 'run_as_user="nexus"' > /opt/nexus/$NEXUSDIR/bin/nexus.rc
+              systemctl daemon-reload
+              systemctl start nexus
+              systemctl enable nexus
+  cloudformsgnexus:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: cloudformsgnexus
+      GroupDescription: Allow SSH AND HTTP FROM ANYWHERE
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 0
+          CidrIp: !Ref MyIP
+  NexusSGIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId:
+        Fn::GetAtt:
+          - cloudformsgnexus
+          - GroupId
+      IpProtocol: tcp
+      FromPort: 8081
+      ToPort: 8081
+      SourceSecurityGroupId:
+        Fn::ImportValue: !Sub "${JenkinsStackName}-SGID" #JenkinsStackName will return jenkins-SGID as mentioned in Parameters
+
+Outputs:
+  MyEC2InstancePublicIP:
+    Value: !GetAtt
+      - NexusInstance
+      - PublicIp
+  MyEC2InstancePrivateIP:
+    Value: !GetAtt
+      - NexusInstance
+      - PrivateIp
+  MyEC2InstanceID:
+    Value: !Ref NexusInstance
+

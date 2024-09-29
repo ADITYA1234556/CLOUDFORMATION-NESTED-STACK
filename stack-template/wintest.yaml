@@ -1,0 +1,92 @@
+Parameters:
+  RoleTempName:
+    Description: Name of the s3 role iam instance profile from cicds3role.yml
+    Type: String
+    Default: cicds3role #name of the s3 role template so that this template will fetch the output of the s3 role template
+  JenkinsStackName:
+    Type: String
+    Description: Will take the output of Jenkins security group id from jenkins.yml template
+    Default: Jenkins
+  InstanceProfileName:
+    Description: Full name of the IAM instance profile to import
+    Type: String
+    Default: cicds3role-cloudS3RoleProfileName
+  MyIP:
+    Type: String
+  KeyName:
+    Type: String
+  InstanceType:
+    Type: String
+    Default: t3.small
+Mappings:
+  AmiRegionMap:
+    eu-west-2:
+      AMI: ami-06cc8c35b80aa143b
+    us-west-1:
+      AMI: ami-059d737350291b1aa
+    eu-west-1:
+      AMI: ami-0c3a915e3f3aa0e0d
+    us-west-2:
+      AMI: ami-033067239f2d2bfbc
+Resources:
+  WintestIntance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      ImageId: !FindInMap
+        - AmiRegionMap
+        - !Ref AWS::Region #will fetch the region
+        - AMI #KEY NAME INSIDE Mappings[AmiRegionMap][EU-WEST-2][AMI]
+      Tags:
+        - Key: "Name"
+          Value: !Join
+            - "-"
+            - - "Windows server in "
+              - !Ref AWS::Region
+      SecurityGroupIds:
+        - !Ref cloudformsgwintest
+      IamInstanceProfile:
+        Fn::ImportValue: !Sub "${InstanceProfileName}"
+      UserData:
+        Fn::Base64:
+          !Sub |
+              <powershell>
+              Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+              choco install jdk8 -y 
+              choco install mvn -y 
+              choco install googlechrome -y
+              choco install git.install -y
+              mkdir C:\jenkins
+              </powershell>
+  cloudformsgwintest:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: cloudformsgwintest
+      GroupDescription: Allow SSH & HTTP from myip
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '3389'
+          ToPort: '3389'
+          CidrIp: !Ref MyIP
+  wintestSGIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId:
+        Fn::GetAtt:
+          - cloudformsgwintest
+          - GroupId
+      IpProtocol: -1
+      SourceSecurityGroupId:
+        Fn::ImportValue:
+          !Sub "${JenkinsStackName}-SGID"
+  JenkinsSGIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId:
+        Fn::ImportValue: !Sub "${JenkinsStackName}-SGID"
+      IpProtocol: -1
+      SourceSecurityGroupId:
+        Fn::GetAtt:
+          - cloudformsgwintest
+          - GroupId

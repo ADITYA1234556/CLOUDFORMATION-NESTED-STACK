@@ -1,0 +1,102 @@
+Parameters:
+  RoleTempName:
+    Description: Name of the s3 role iam instance profile from cicds3role.yml
+    Type: String
+    Default: cicds3role #name of the s3 role template so that this template will fetch the output of the s3 role template
+  MyIP:
+    Type: String
+  KeyName:
+    Type: String
+  InstanceType:
+    Type: String
+    Default: t3.small
+
+Mappings:
+  AmiRegionMap:
+    eu-west-2:
+      AMI: ami-03ceeb33c1e4abcd1
+    us-west-1:
+      AMI: ami-059d737350291b1aa
+    eu-west-1:
+      AMI: ami-0c3a915e3f3aa0e0d
+    us-west-2:
+      AMI: ami-033067239f2d2bfbc
+
+Resources:
+  JenkinsInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      ImageId: !FindInMap
+        - AmiRegionMap
+        - !Ref AWS::Region #will fetch the region
+        - AMI #KEY NAME INSIDE Mappings[AmiRegionMap][EU-WEST-2][AMI]
+      Tags:
+        - Key: "Name"
+          Value: !Join
+            - "-"
+            - - "Jenkins in "
+              - !Ref AWS::Region
+      SecurityGroupIds:
+        - !Ref cloudformsgjenkins
+      IamInstanceProfile:
+        Fn::ImportValue:
+          Fn::Sub: "${RoleTempName}-cloudS3RoleProfileName" #RoleTempName will return cicds3role as mentioned in Parameters
+      UserData:
+        Fn::Base64:
+          !Sub |
+              #!/bin/bash
+              sudo apt update
+              sudo apt install openjdk-11-jdk -y
+              sudo apt install maven git unzip wget -y
+              curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee \
+                /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+                
+              echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
+                https://pkg.jenkins.io/debian-stable binary/ | sudo tee \
+                /etc/apt/sources.list.d/jenkins.list > /dev/null
+              
+              sudo apt-get update
+              sudo apt-get install jenkins -y
+              sudo chown jenkins.jenkins /var/lib/jenkins -R
+              reboot
+    #          sleep 10
+    #          systemctl stop jenkins
+    #          sleep 10
+    #          aws s3 cp s3://111-aditya-bucket/ /var/lib
+    #          cd /var/lib
+    #          tar xvzf
+  cloudformsgjenkins:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: cloudformsgjenkins
+      GroupDescription: Allow SSH AND HTTP FROM ANYWHERE
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 0
+          CidrIp: !Ref MyIP
+
+Outputs:
+  MyEC2InstancePublicIP:
+    Value: !GetAtt
+      - JenkinsInstance
+      - PublicIp
+  MyEC2InstancePrivateIP:
+    Value: !GetAtt
+      - JenkinsInstance
+      - PrivateIp
+  MyEC2InstanceID:
+    Value: !Ref JenkinsInstance
+  JenkinsSecurityGroupID:
+    Description: Security group ID of jenkinsSG
+    Value:
+      Fn::GetAtt:
+        - cloudformsgjenkins
+        - GroupId
+    Export:
+      Name: Jenkins-SGID
+
+
+#IF WE EXPORT A VALUE -> WE IMPORT IT IN THE NEXT TEMPLATE AS A PARAMETER VALUE AND USE IT

@@ -1,0 +1,82 @@
+Parameters:
+  KeyPair:
+    Description: To select the required key pair to be used with EC2
+    Type: AWS::EC2::KeyPair::KeyName
+  InstanceTypeParameter:
+    Description: Select the type of EC2 instance you want to create
+    Type: String
+    Default: t3.small
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t3.large
+      - t3.small
+  MyIP:
+    Description: The IP address that will be used with security groups
+    Type: String
+    Default: 0.0.0.0/0
+
+Resources:
+  S3RoleForCICD:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/11-aditya-bucket/cloudformation-stack-template/cicds3role.yaml
+
+  JenkinsInstance:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: S3RoleForCICD
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/11-aditya-bucket/cloudformation-stack-template/jenkins.yaml
+      Parameters:
+        KeyName: !Ref KeyPair
+        MyIP: !Ref MyIP
+
+  App01QA:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: JenkinsInstance
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/11-aditya-bucket/cloudformation-stack-template/app01qa.yaml
+#      "s3://111-aditya-bucket/cloudformation-stack-template/app01qa.yaml"
+      Parameters:
+        KeyName: !Ref KeyPair
+        MyIP: !Ref MyIP
+
+  NexusServer:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: JenkinsInstance
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/11-aditya-bucket/cloudformation-stack-template/nexus.yaml
+      Parameters:
+        KeyName: !Ref KeyPair
+        MyIP: !Ref MyIP
+
+  DatabaseServer:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: App01QA
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/11-aditya-bucket/cloudformation-stack-template/databaseserver.yaml
+      Parameters:
+        KeyName: !Ref KeyPair
+        MyIP: !Ref MyIP
+
+  SonarQubeServer:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: JenkinsInstance
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/11-aditya-bucket/cloudformation-stack-template/sonar.yaml
+      Parameters:
+        KeyName: !Ref KeyPair
+        MyIP: !Ref MyIP
+
+#  WindowsTestServer:
+#    Type: AWS::CloudFormation::Stack
+#    DependsOn: JenkinsInstance
+#    Properties:
+#      TemplateURL: https://s3.amazonaws.com/11-aditya-bucket/cloudformation-stack-template/wintest.yaml
+#      Parameters:
+#        KeyName: !Ref KeyPair
+#        MyIP: !Ref MyIP
+
+
+
+

@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  CloudS3Role:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: CloudS3Role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: CloudS3EC2fullaccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: 'arn:aws:s3:::*' #all buckets in s3
+  RootInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      InstanceProfileName: CloudS3Role
+      Path: /
+      Roles:
+        - !Ref CloudS3Role
+
+#Export the role so that it can be attached to Jenkins
+Outputs:
+  CloudS3roleDetails:
+    Description: cloudformation created role info
+    Value: !Ref RootInstanceProfile
+    Export:
+      Name: cicds3role-cloudS3RoleProfileName
