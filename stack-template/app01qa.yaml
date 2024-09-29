@@ -55,6 +55,7 @@ Resources:
               sudo apt update
               sudo apt install git wget unzip -y
               sudo apt install openjdk-8-jdk -y
+              sudo apt install openjdk-11-jdk -y
               sudo apt install awscli -y
               TOMURL="https://archive.apache.org/dist/tomcat/tomcat-9/v9.0.75/bin/apache-tomcat-9.0.75.tar.gz"
               cd /tmp/
@@ -65,6 +66,9 @@ Resources:
               rsync -avzh /tmp/$TOMDIR/ /usr/local/tomcat/
               chown -R tomcat.tomcat /usr/local/tomcat
               rm -rf /etc/systemd/system/tomcat.service
+#              rm -rf /usr/local/tomcat/webapps/ROOT*
+#              cd /tmp && wget https://adityaproject09.s3.eu-west-2.amazonaws.com/pipeline-artifacts/vprofile-v2.war
+#              cp vprofile-v2.war //usr/local/tomcat/webapps/ROOT.war
               cat <<EOT>> /etc/systemd/system/tomcat.service
               [Unit]
               Description=Tomcat
@@ -78,7 +82,7 @@ Resources:
               WorkingDirectory=/usr/local/tomcat
               
               #Environment=JRE_HOME=/usr/lib/jvm/jre
-              Environment=JAVA_HOME=/usr/lib/jvm/jre
+              Environment=JAVA_HOME=/usr/lib/jvm/java-1.11.0-openjdk-amd64
               
               Environment=CATALINA_PID=/var/tomcat/%i/run/tomcat.pid
               Environment=CATALINA_HOME=/usr/local/tomcat
